@@ -1,3 +1,4 @@
+# 필요한 라이브러리를 가져옵니다.
 import os
 import logging
 from datetime import date, datetime
@@ -19,15 +20,24 @@ seoul_tz = pytz.timezone('Asia/Seoul')
 # --- 핵심 기능 함수 ---
 
 def get_google_creds():
-    """Railway 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수"""
+    """Railway 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수 (수정됨)"""
+    # 구글 API에 접근하기 위한 권한 범위를 정의합니다.
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    
     creds_json_str = os.getenv('GOOGLE_CREDENTIALS_JSON')
     if creds_json_str:
         logging.info("Railway 환경 변수에서 구글 인증 정보를 로드합니다.")
-        creds_json = json.loads(creds_json_str)
-        return ServiceAccountCredentials.from_json_keyfile_dict(creds_json)
+        try:
+            creds_json = json.loads(creds_json_str)
+            # scope를 추가해서 인증을 더 명확하게 처리하도록 수정했습니다.
+            return ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+        except json.JSONDecodeError:
+            logging.error("Railway의 GOOGLE_CREDENTIALS_JSON 변수가 올바른 JSON 형식이 아닙니다! 값을 다시 확인해주세요.")
+            raise
     elif os.path.exists('credentials.json'):
         logging.info("로컬 credentials.json 파일에서 구글 인증 정보를 로드합니다.")
-        return ServiceAccountCredentials.from_json_keyfile_name('credentials.json')
+        # scope를 추가해서 로컬 테스트도 정상적으로 동작하도록 수정했습니다.
+        return ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     else:
         raise FileNotFoundError("구글 인증 정보를 찾을 수 없습니다. Railway 변수 또는 credentials.json 파일을 확인해주세요.")
 
@@ -50,7 +60,6 @@ def get_menu_from_sheet(column_index: int):
             logging.info(f"{today_str} 날짜의 메뉴가 시트에 없습니다.")
             return None
             
-        # 지정된 열(column_index)에서 이미지 URL을 가져옵니다. (점심: 2, 저녁: 3)
         image_url = sheet.cell(cell.row, column_index).value
         if image_url:
             logging.info(f"오늘의 메뉴 이미지 URL을 찾았습니다 (열 {column_index}): {image_url}")
@@ -108,14 +117,14 @@ if __name__ == "__main__":
 
     # 점심 알림 스케줄 (오전 11시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=11, minute=30,
         args=[webhook_url, 'lunch'], id='lunch_notification'
     )
     logging.info("점심 메뉴 알림이 매주 월-금 11:30에 설정되었습니다.")
 
-    # 저녁 알림 스케줄 (오후 5시 30분) - 새로 추가!
+    # 저녁 알림 스케줄 (오후 5시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=43,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=50,
         args=[webhook_url, 'dinner'], id='dinner_notification'
     )
     logging.info("저녁 메뉴 알림이 매주 월-금 17:30에 설정되었습니다.")
