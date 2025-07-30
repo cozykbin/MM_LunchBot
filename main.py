@@ -20,8 +20,7 @@ seoul_tz = pytz.timezone('Asia/Seoul')
 # --- 핵심 기능 함수 ---
 
 def get_google_creds():
-    """Railway 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수 (수정됨)"""
-    # 구글 API에 접근하기 위한 권한 범위를 정의합니다.
+    """Railway 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수"""
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
     creds_json_str = os.getenv('GOOGLE_CREDENTIALS_JSON')
@@ -29,20 +28,18 @@ def get_google_creds():
         logging.info("Railway 환경 변수에서 구글 인증 정보를 로드합니다.")
         try:
             creds_json = json.loads(creds_json_str)
-            # scope를 추가해서 인증을 더 명확하게 처리하도록 수정했습니다.
             return ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         except json.JSONDecodeError:
             logging.error("Railway의 GOOGLE_CREDENTIALS_JSON 변수가 올바른 JSON 형식이 아닙니다! 값을 다시 확인해주세요.")
             raise
     elif os.path.exists('credentials.json'):
         logging.info("로컬 credentials.json 파일에서 구글 인증 정보를 로드합니다.")
-        # scope를 추가해서 로컬 테스트도 정상적으로 동작하도록 수정했습니다.
         return ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
     else:
         raise FileNotFoundError("구글 인증 정보를 찾을 수 없습니다. Railway 변수 또는 credentials.json 파일을 확인해주세요.")
 
 def get_menu_from_sheet(column_index: int):
-    """구글 시트에서 오늘 날짜의 메뉴 이미지 URL을 가져오는 함수 (열 번호로 점심/저녁 구분)"""
+    """구글 시트에서 오늘 날짜의 메뉴 이미지 URL을 가져오는 함수"""
     try:
         creds = get_google_creds()
         client = gspread.authorize(creds)
@@ -73,7 +70,7 @@ def get_menu_from_sheet(column_index: int):
         return None
 
 def send_meal_message(webhook_url: str, meal_type: str):
-    """메뉴를 가져와서 Mattermost로 식사 알림 메시지를 전송하는 통합 함수"""
+    """메뉴를 가져와서 Mattermost로 식사 알림 메시지를 전송하는 통합 함수 (봇 이름/사진 기능 추가)"""
     if not webhook_url:
         logging.error("MATTERMOST_WEBHOOK_URL이 .env 파일 또는 Railway 변수에 설정되지 않았습니다!")
         return
@@ -83,13 +80,14 @@ def send_meal_message(webhook_url: str, meal_type: str):
         message = "🍚 오늘의 점심 메뉴입니다! 맛있게 드세요!"
     elif meal_type == 'dinner':
         column = 3
-        message = "🌙 오늘의 저녁 메뉴입니다! 7800원의 행복!"
+        message = "🌙 오늘의 저녁 메뉴입니다! 7,800원의 행복!"
     else:
         return
 
     image_url = get_menu_from_sheet(column_index=column)
     
     if image_url:
+        # 기본 메시지 payload
         payload = {
             'text': message,
             'attachments': [{
@@ -97,6 +95,15 @@ def send_meal_message(webhook_url: str, meal_type: str):
                 "image_url": image_url
             }]
         }
+        
+        # .env 또는 Railway 변수에서 봇 이름과 아이콘 URL을 가져옵니다.
+        bot_username = os.getenv('BOT_USERNAME')
+        bot_icon_url = os.getenv('BOT_ICON_URL')
+        
+        if bot_username:
+            payload['username'] = bot_username
+        if bot_icon_url:
+            payload['icon_url'] = bot_icon_url
         
         try:
             response = requests.post(webhook_url, json=payload, timeout=10)
@@ -124,7 +131,7 @@ if __name__ == "__main__":
 
     # 저녁 알림 스케줄 (오후 5시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=58,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=59,
         args=[webhook_url, 'dinner'], id='dinner_notification'
     )
     logging.info("저녁 메뉴 알림이 매주 월-금 17:30에 설정되었습니다.")
