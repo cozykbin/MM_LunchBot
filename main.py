@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     # 저녁 알림 스케줄 (오후 5시 30분) - 새로 추가!
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=40,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=43,
         args=[webhook_url, 'dinner'], id='dinner_notification'
     )
     logging.info("저녁 메뉴 알림이 매주 월-금 17:30에 설정되었습니다.")
