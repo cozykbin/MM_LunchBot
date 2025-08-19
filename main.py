@@ -104,7 +104,7 @@ def send_scheduled_meal_message(webhook_url: str, meal_type: str):
     """(스케줄용) 만족도 투표 버튼이 포함된 식사 알림 메시지를 전송하는 함수"""
     if not webhook_url: return
     
-    if meal_type == 'lunch': column, message = 2,  "🍚 오늘의 점심 메뉴입니다! :chef_kirby:오늘도 맛있게 먹고 힘내보자구..👍
+    if meal_type == 'lunch': column, message = 2,  "🍚 오늘의 점심 메뉴입니다! :chef_kirby: 오늘도 맛있게 먹고 힘내보자구..👍"
     elif meal_type == 'dinner': column, message = 3, "🌙 오늘의 저녁 메뉴입니다! :chef_kirby:  7,800원의 행복!✨"
     else: return
 
@@ -243,3 +243,4 @@ if __name__ == "__main__":
 
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
