@@ -21,7 +21,7 @@ seoul_tz = pytz.timezone('Asia/Seoul')
 # --- 핵심 기능 함수 ---
 
 def get_google_creds():
-    """Railway 환경 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수"""
+    """Railway 변수 또는 로컬 파일에서 구글 인증 정보를 가져오는 함수"""
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
     creds_json_str = os.getenv('GOOGLE_CREDENTIALS_JSON')
@@ -72,7 +72,6 @@ def get_weekly_menu():
         client = gspread.authorize(creds)
         sheet = client.open(os.getenv('GOOGLE_SHEET_NAME')).sheet1
         
-        # 시트 전체 데이터를 한 번에 가져와서 처리 (API 호출 최소화)
         all_data = sheet.get_all_records()
         
         today = date.today()
@@ -84,12 +83,11 @@ def get_weekly_menu():
             day_str = day.strftime("%Y-%m-%d")
             day_name = ["월", "화", "수", "목", "금"][i]
             
-            # 가져온 데이터에서 오늘 날짜에 해당하는 행을 찾습니다.
             row_data = next((row for row in all_data if row.get('Date') == day_str), None)
             
             if row_data:
-                lunch = f"[메뉴 보기]({row_data['LunchImageURL']})" if row_data.get('LunchImageURL') else "미등록"
-                dinner = f"[메뉴 보기]({row_data['DinnerImageURL']})" if row_data.get('DinnerImageURL') else "미등록"
+                lunch = f"[메뉴 보기]({row_data.get('LunchImageURL', '')})" if row_data.get('LunchImageURL') else "미등록"
+                dinner = f"[메뉴 보기]({row_data.get('DinnerImageURL', '')})" if row_data.get('DinnerImageURL') else "미등록"
             else:
                 lunch, dinner = "미등록", "미등록"
             
@@ -101,12 +99,17 @@ def get_weekly_menu():
         return None
 
 def send_scheduled_meal_message(webhook_url: str, meal_type: str):
-    """(스케줄용) 만족도 투표 버튼이 포함된 식사 알림 메시지를 전송하는 함수"""
+    """(스케줄용) 'A/B 선택' 투표 버튼이 포함된 식사 알림 메시지를 전송하는 함수"""
     if not webhook_url: return
     
-    if meal_type == 'lunch': column, message = 2,  "🍚 오늘의 점심 메뉴입니다! :chef_kirby: 오늘도 맛있게 먹고 힘내보자구..👍"
-    elif meal_type == 'dinner': column, message = 3, "🌙 오늘의 저녁 메뉴입니다! :chef_kirby:  7,800원의 행복!✨"
-    else: return
+    if meal_type == 'lunch':
+        column = 2
+        message = ":chef_kirby: 오늘의 점심 메뉴입니다! :doogeun_nervous_heartbeat: 오늘도 맛있게 먹고 힘내보자구..👍"
+    elif meal_type == 'dinner':
+        column = 3
+        message = " :chef_kirby: 오늘의 저녁 메뉴입니다! :doogeun_nervous_heartbeat:  7,800원의 행복!✨"
+    else:
+        return
 
     image_url = get_menu_from_sheet(column_index=column)
     
@@ -117,8 +120,8 @@ def send_scheduled_meal_message(webhook_url: str, meal_type: str):
         actions = []
         if app_url:
             actions = [
-                {"id": "rateGood", "name": "👍 좋았어요!", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "rating": "good"}}},
-                {"id": "rateBad", "name": "👎 별로였어요", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "rating": "bad"}}}
+                {"id": "choiceA", "name": "난 A 먹을래", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "choice": "A"}}},
+                {"id": "choiceB", "name": "난 B 먹을래", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "choice": "B"}}}
             ]
 
         payload = {'text': message, 'attachments': [{"fallback": "메뉴 이미지", "image_url": image_url, "actions": actions}]}
@@ -154,7 +157,6 @@ def handle_command():
     if not expected_token or command_token != expected_token:
         return jsonify({'text': '에러: 인증 토큰이 잘못되었습니다.'}), 401
     
-    # --- 주간 메뉴 명령어 처리 ---
     if command_text == '!주간메뉴':
         weekly_table_content = get_weekly_menu()
         if weekly_table_content:
@@ -165,7 +167,6 @@ def handle_command():
             response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다. 😥"}
         return jsonify(response_payload)
 
-    # --- 오늘/내일 메뉴 명령어 처리 ---
     day_offset = 0
     command_base = command_text
     if '내일' in command_text:
@@ -192,14 +193,16 @@ def handle_command():
         response_payload = {"response_type": "ephemeral", "text": f"아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! 😅"}
     return jsonify(response_payload)
 
+# --- [수정됨] 사용자 이름 기록 없이 카운트만 하는 새로운 투표 함수 ---
 @app.route('/vote', methods=['POST'])
 def handle_vote():
-    """만족도 투표 버튼 클릭을 처리하는 함수"""
+    """'A/B 선택' 투표 버튼 클릭을 처리하고 구글 시트에 카운트만 올리는 함수"""
     data = request.json
     context = data.get('context', {})
-    meal_date, meal_type, rating, user_name = context.get('date'), context.get('meal_type'), context.get('rating'), data.get('user_name')
+    meal_date, meal_type, choice = context.get('date'), context.get('meal_type'), context.get('choice')
 
-    if not all([meal_date, meal_type, rating, user_name]):
+    # 이제 user_name은 확인하지 않습니다.
+    if not all([meal_date, meal_type, choice]):
         return jsonify({"update": {"message": "오류: 투표 정보가 부족합니다."}}), 400
 
     try:
@@ -211,16 +214,24 @@ def handle_vote():
         if not cell:
             return jsonify({"update": {"message": "오류: 해당 날짜의 메뉴를 찾을 수 없습니다."}})
 
-        col_to_update = 4 if meal_type == 'lunch' else 5
-        current_votes = sheet.cell(cell.row, col_to_update).value or ""
+        # 점심(D,E), 저녁(F,G)에 사용할 열 번호를 정의합니다.
+        if meal_type == 'lunch':
+            count_a_col, count_b_col = 4, 5 # D, E
+        else: # dinner
+            count_a_col, count_b_col = 6, 7 # F, G
+
+        # 선택한 메뉴(A/B)에 따라 카운트를 올릴 열을 결정합니다.
+        target_count_col = count_a_col if choice == 'A' else count_b_col
         
-        if user_name in current_votes:
-             return jsonify({"update": {"message": f"{user_name}님, 이미 투표하셨어요! 😉"}})
+        # 현재 카운트를 읽어와 1을 더합니다.
+        current_count = int(sheet.cell(cell.row, target_count_col).value or 0)
+        new_count = current_count + 1
+        
+        # 시트의 카운트를 업데이트합니다. (투표자 명단 기록은 제거)
+        sheet.update_cell(cell.row, target_count_col, new_count)
 
-        new_vote = f"👍({user_name})" if rating == "good" else f"👎({user_name})"
-        sheet.update_cell(cell.row, col_to_update, (current_votes + " " + new_vote).strip())
-
-        return jsonify({"update": {"message": f"{user_name}님, 소중한 피드백 감사합니다! 🥳"}})
+        # 중복 투표를 막기 위해, 버튼을 누르면 이 메시지로 바뀌면서 버튼이 사라집니다.
+        return jsonify({"update": {"message": "투표해주셔서 감사합니다! 🥳"}})
     except Exception as e:
         logging.error(f"투표 처리 중 오류: {e}")
         return jsonify({"update": {"message": "오류가 발생해 투표를 기록하지 못했습니다."}})
@@ -234,14 +245,12 @@ if __name__ == "__main__":
 
     if incoming_webhook_url:
         scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=21, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=38, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
     else:
         logging.warning("MATTERMOST_WEBHOOK_URL이 설정되지 않아 스케줄 알림이 비활성화되었습니다.")
-
+    
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
-
