@@ -167,7 +167,7 @@ def handle_command():
             full_table = f"### 📅 이번 주 메뉴 요약\n" + table_header + weekly_table_content
             response_payload = {"response_type": "in_channel", "text": full_table}
         else:
-            response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다. �"}
+            response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다."}
         return jsonify(response_payload)
 
     day_offset = 0
@@ -268,7 +268,7 @@ if __name__ == "__main__":
 
     if incoming_webhook_url:
         scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=49, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=51, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
@@ -277,4 +277,4 @@ if __name__ == "__main__":
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-�
+
