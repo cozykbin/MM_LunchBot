@@ -98,16 +98,17 @@ def get_weekly_menu():
         logging.error(f"주간 메뉴 조회 중 오류: {e}")
         return None
 
+# --- [수정됨] 버튼을 업데이트하기 위해 image_url을 context에 추가하는 함수 ---
 def send_scheduled_meal_message(webhook_url: str, meal_type: str):
     """(스케줄용) 'A/B 선택' 투표 버튼이 포함된 식사 알림 메시지를 전송하는 함수"""
     if not webhook_url: return
     
     if meal_type == 'lunch':
         column = 2
-        message = ":chef_kirby: 오늘의 점심 메뉴입니다! :doogeun_nervous_heartbeat: 오늘도 맛있게 먹고 힘내보자구..👍"
+        message = "## 🍚 오늘의 점심 메뉴입니다!  :chef_kirby: 오늘도 맛있게 먹고 힘내보자구..👍"
     elif meal_type == 'dinner':
         column = 3
-        message = " :chef_kirby: 오늘의 저녁 메뉴입니다! :doogeun_nervous_heartbeat:  7,800원의 행복!✨"
+        message = "## 🌙 오늘의 저녁 메뉴입니다!  :chef_kirby: 7,800원의 행복!✨"
     else:
         return
 
@@ -119,9 +120,11 @@ def send_scheduled_meal_message(webhook_url: str, meal_type: str):
         
         actions = []
         if app_url:
+            # context에 image_url을 추가해서, 투표 시 버튼을 다시 만들 때 사용할 수 있도록 합니다.
+            context_base = {"meal_type": meal_type, "date": today_str, "image_url": image_url}
             actions = [
-                {"id": "choiceA", "name": "난 A 먹을래", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "choice": "A"}}},
-                {"id": "choiceB", "name": "난 B 먹을래", "integration": {"url": f"{app_url}/vote", "context": {"meal_type": meal_type, "date": today_str, "choice": "B"}}}
+                {"id": "choiceA", "name": "난 A 먹을래", "integration": {"url": f"{app_url}/vote", "context": {**context_base, "choice": "A"}}},
+                {"id": "choiceB", "name": "난 B 먹을래", "integration": {"url": f"{app_url}/vote", "context": {**context_base, "choice": "B"}}}
             ]
 
         payload = {'text': message, 'attachments': [{"fallback": "메뉴 이미지", "image_url": image_url, "actions": actions}]}
@@ -164,7 +167,7 @@ def handle_command():
             full_table = f"### 📅 이번 주 메뉴 요약\n" + table_header + weekly_table_content
             response_payload = {"response_type": "in_channel", "text": full_table}
         else:
-            response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다. 😥"}
+            response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다. �"}
         return jsonify(response_payload)
 
     day_offset = 0
@@ -193,16 +196,15 @@ def handle_command():
         response_payload = {"response_type": "ephemeral", "text": f"아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! 😅"}
     return jsonify(response_payload)
 
-# --- [수정됨] 사용자 이름 기록 없이 카운트만 하는 새로운 투표 함수 ---
+# --- [수정됨] 버튼을 실시간으로 업데이트하는 새로운 투표 함수 ---
 @app.route('/vote', methods=['POST'])
 def handle_vote():
-    """'A/B 선택' 투표 버튼 클릭을 처리하고 구글 시트에 카운트만 올리는 함수"""
+    """'A/B 선택' 투표 버튼을 누르면, 카운트를 올리고 버튼 내용을 실시간으로 업데이트하는 함수"""
     data = request.json
     context = data.get('context', {})
-    meal_date, meal_type, choice = context.get('date'), context.get('meal_type'), context.get('choice')
+    meal_date, meal_type, choice, image_url = context.get('date'), context.get('meal_type'), context.get('choice'), context.get('image_url')
 
-    # 이제 user_name은 확인하지 않습니다.
-    if not all([meal_date, meal_type, choice]):
+    if not all([meal_date, meal_type, choice, image_url]):
         return jsonify({"update": {"message": "오류: 투표 정보가 부족합니다."}}), 400
 
     try:
@@ -214,24 +216,45 @@ def handle_vote():
         if not cell:
             return jsonify({"update": {"message": "오류: 해당 날짜의 메뉴를 찾을 수 없습니다."}})
 
-        # 점심(D,E), 저녁(F,G)에 사용할 열 번호를 정의합니다.
         if meal_type == 'lunch':
             count_a_col, count_b_col = 4, 5 # D, E
         else: # dinner
             count_a_col, count_b_col = 6, 7 # F, G
 
-        # 선택한 메뉴(A/B)에 따라 카운트를 올릴 열을 결정합니다.
         target_count_col = count_a_col if choice == 'A' else count_b_col
         
-        # 현재 카운트를 읽어와 1을 더합니다.
-        current_count = int(sheet.cell(cell.row, target_count_col).value or 0)
+        try:
+            current_count = int(sheet.cell(cell.row, target_count_col).value or 0)
+        except (ValueError, TypeError):
+            current_count = 0
+            
         new_count = current_count + 1
-        
-        # 시트의 카운트를 업데이트합니다. (투표자 명단 기록은 제거)
         sheet.update_cell(cell.row, target_count_col, new_count)
 
-        # 중복 투표를 막기 위해, 버튼을 누르면 이 메시지로 바뀌면서 버튼이 사라집니다.
-        return jsonify({"update": {"message": "투표해주셔서 감사합니다! 🥳"}})
+        # 투표가 끝난 후, 시트에서 최신 투표 수를 다시 읽어옵니다.
+        count_a = int(sheet.cell(cell.row, count_a_col).value or 0)
+        count_b = int(sheet.cell(cell.row, count_b_col).value or 0)
+
+        # 최신 투표 수가 반영된 새로운 버튼을 만듭니다.
+        app_url = os.getenv('YOUR_APP_URL')
+        new_context_base = {"meal_type": meal_type, "date": meal_date, "image_url": image_url}
+        new_actions = [
+            {"id": "choiceA", "name": f"난 A 먹을래 ({count_a}표)", "integration": {"url": f"{app_url}/vote", "context": {**new_context_base, "choice": "A"}}},
+            {"id": "choiceB", "name": f"난 B 먹을래 ({count_b}표)", "integration": {"url": f"{app_url}/vote", "context": {**new_context_base, "choice": "B"}}}
+        ]
+        
+        # 기존 메시지의 버튼을 새로운 버튼으로 '교체'하라는 응답을 보냅니다.
+        return jsonify({
+            "update": {
+                "props": {
+                    "attachments": [{
+                        "fallback": "메뉴 이미지",
+                        "image_url": image_url,
+                        "actions": new_actions
+                    }]
+                }
+            }
+        })
     except Exception as e:
         logging.error(f"투표 처리 중 오류: {e}")
         return jsonify({"update": {"message": "오류가 발생해 투표를 기록하지 못했습니다."}})
@@ -245,7 +268,7 @@ if __name__ == "__main__":
 
     if incoming_webhook_url:
         scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=38, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=49, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
@@ -254,3 +277,4 @@ if __name__ == "__main__":
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+�
