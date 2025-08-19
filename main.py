@@ -124,14 +124,14 @@ if __name__ == "__main__":
 
     # 점심 알림 스케줄 (오전 11시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=11, minute=30,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50,
         args=[webhook_url, 'lunch'], id='lunch_notification'
     )
     logging.info("점심 메뉴 알림이 매주 월-금 11:30에 설정되었습니다.")
 
     # 저녁 알림 스케줄 (오후 5시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=15, minute=59,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=14, minute=34,
         args=[webhook_url, 'dinner'], id='dinner_notification'
     )
     logging.info("저녁 메뉴 알림이 매주 월-금 17:30에 설정되었습니다.")
@@ -147,3 +147,4 @@ if __name__ == "__main__":
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
