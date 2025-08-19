@@ -268,7 +268,7 @@ if __name__ == "__main__":
 
     if incoming_webhook_url:
         scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=51, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=54, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
@@ -277,4 +277,5 @@ if __name__ == "__main__":
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
