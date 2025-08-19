@@ -77,10 +77,10 @@ def send_meal_message(webhook_url: str, meal_type: str):
     
     if meal_type == 'lunch':
         column = 2
-        message = "🍚 오늘의 점심 메뉴입니다! 맛있게 드세요!"
+        message = "🍚 오늘의 점심 메뉴입니다:chef_kirby: 오늘도 맛있게 먹고 힘내보자구..:clap_kkihyuck: "
     elif meal_type == 'dinner':
         column = 3
-        message = "🌙 오늘의 저녁 메뉴입니다! 7,800원의 행복!"
+        message = "🌙 오늘의 저녁 메뉴입니다:chef_kirby:  7,800원의 행복!:clap_kkihyuck: "
     else:
         return
 
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     # 저녁 알림 스케줄 (오후 5시 30분)
     scheduler.add_job(
-        send_meal_message, 'cron', day_of_week='mon-fri', hour=14, minute=34,
+        send_meal_message, 'cron', day_of_week='mon-fri', hour=14, minute=42,
         args=[webhook_url, 'dinner'], id='dinner_notification'
     )
     logging.info("저녁 메뉴 알림이 매주 월-금 17:30에 설정되었습니다.")
@@ -147,4 +147,5 @@ if __name__ == "__main__":
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
