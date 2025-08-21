@@ -15,6 +15,7 @@ import atexit
 # --- 기본 설정 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 load_dotenv()
+# 서울 시간대를 기준으로 설정합니다.
 seoul_tz = pytz.timezone('Asia/Seoul')
 
 
@@ -46,7 +47,9 @@ def get_menu_from_sheet(column_index: int, day_offset: int = 0):
         client = gspread.authorize(creds)
         sheet = client.open(os.getenv('GOOGLE_SHEET_NAME')).sheet1
         
-        target_date = date.today() + timedelta(days=day_offset)
+        # --- [수정] ✨ 항상 서울 시간 기준으로 '오늘' 날짜를 계산 ---
+        today_seoul = datetime.now(seoul_tz).date()
+        target_date = today_seoul + timedelta(days=day_offset)
         target_date_str = target_date.strftime("%Y-%m-%d")
         
         cell = sheet.find(target_date_str, in_column=1)
@@ -74,7 +77,8 @@ def get_weekly_menu():
         
         all_data = sheet.get_all_records()
         
-        today = date.today()
+        # --- [수정] ✨ 항상 서울 시간 기준으로 '오늘' 날짜를 계산 ---
+        today = datetime.now(seoul_tz).date()
         start_of_week = today - timedelta(days=today.weekday())
         weekly_menu_data = []
 
@@ -105,10 +109,10 @@ def send_scheduled_meal_message(webhook_url: str, meal_type: str):
     
     if meal_type == 'lunch':
         column = 2
-        message = "## 🍚 오늘의 점심 메뉴입니다!  :chef_kirby: 오늘도 맛있게 먹고 힘내보자구..👍"
+        message = "## 🍚 오늘의 점심 메뉴입니다! :chef_kirby: 맛있게 먹고 힘내보자구..👍"
     elif meal_type == 'dinner':
         column = 3
-        message = "## 🌙 오늘의 저녁 메뉴입니다!  :chef_kirby: 7,800원의 행복!✨"
+        message = "## 🌙 오늘의 저녁 메뉴입니다! :chef_kirby: 7,800원의 행복!✨"
     else:
         return
 
@@ -171,9 +175,9 @@ def handle_command():
     if '내일' in command_text:
         day_offset = 1
         command_base = command_text.replace('내일', '').strip()
-        message_prefix = "📅 내일"
+        message_prefix = "## 📅 내일"
     else:
-        message_prefix = "🍚 오늘"
+        message_prefix = "## 🍚 오늘"
 
     if '점심' in command_base: column, meal_name = 2, "점심"
     elif '저녁' in command_base: column, meal_name = 3, "저녁"
@@ -187,9 +191,9 @@ def handle_command():
     image_url = get_menu_from_sheet(column_index=column, day_offset=day_offset)
     
     if image_url:
-        response_payload = {"response_type": "in_channel", "text": f"{message_prefix} {meal_name} 메뉴입니다!", "attachments": [{"fallback": "메뉴 이미지", "image_url": image_url}]}
+        response_payload = {"response_type": "in_channel", "text": f"{message_prefix} {meal_name} 메뉴입니다! :kirby_shake: ", "attachments": [{"fallback": "메뉴 이미지", "image_url": image_url}]}
     else:
-        response_payload = {"response_type": "ephemeral", "text": f"아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! 😅"}
+        response_payload = {"response_type": "ephemeral", "text": f"## 아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! :kane_sorry: "}
     return jsonify(response_payload)
 
 # --- [삭제] ✨ 투표를 처리하는 /vote 엔드포인트 전체를 제거 ---
@@ -202,8 +206,8 @@ if __name__ == "__main__":
     incoming_webhook_url = os.getenv('MATTERMOST_WEBHOOK_URL')
 
     if incoming_webhook_url:
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=10, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=16, minute=50, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=9, minute=00, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=14, minute=00, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
