@@ -47,7 +47,6 @@ def get_menu_from_sheet(column_index: int, day_offset: int = 0):
         client = gspread.authorize(creds)
         sheet = client.open(os.getenv('GOOGLE_SHEET_NAME')).sheet1
         
-        # --- [수정] ✨ 항상 서울 시간 기준으로 '오늘' 날짜를 계산 ---
         today_seoul = datetime.now(seoul_tz).date()
         target_date = today_seoul + timedelta(days=day_offset)
         target_date_str = target_date.strftime("%Y-%m-%d")
@@ -77,7 +76,6 @@ def get_weekly_menu():
         
         all_data = sheet.get_all_records()
         
-        # --- [수정] ✨ 항상 서울 시간 기준으로 '오늘' 날짜를 계산 ---
         today = datetime.now(seoul_tz).date()
         start_of_week = today - timedelta(days=today.weekday())
         weekly_menu_data = []
@@ -102,24 +100,22 @@ def get_weekly_menu():
         logging.error(f"주간 메뉴 조회 중 오류: {e}")
         return None
 
-# --- [수정됨] ✨ 투표 버튼 없는 버전 ✨ ---
 def send_scheduled_meal_message(webhook_url: str, meal_type: str):
     """(스케줄용) 식사 알림 메시지를 전송하는 함수 (투표 버튼 없음)"""
     if not webhook_url: return
     
     if meal_type == 'lunch':
         column = 2
-        message = "## 🍚 오늘의 점심 메뉴입니다! :chef_kirby: 맛있게 먹고 힘내보자구..👍"
+        message = "## 🍚 오늘의 점심 메뉴입니다!  :chef_kirby: 맛있게 먹고 힘내보자구..👍"
     elif meal_type == 'dinner':
         column = 3
-        message = "## 🌙 오늘의 저녁 메뉴입니다! :chef_kirby: 7,800원의 행복!✨"
+        message = "## 🌙 오늘의 저녁 메뉴입니다!  :chef_kirby: 7,800원의 행복!✨"
     else:
         return
 
     image_url = get_menu_from_sheet(column_index=column)
     
     if image_url:
-        # --- [수정] 'actions' (버튼) 부분을 완전히 제거 ---
         payload = {
             'text': message,
             'attachments': [{
@@ -160,12 +156,13 @@ def handle_command():
     if not expected_token or command_token != expected_token:
         return jsonify({'text': '에러: 인증 토큰이 잘못되었습니다.'}), 401
     
+    # --- [수정] ✨ !주간메뉴 응답을 'ephemeral' (나에게만 보기)로 변경 ---
     if command_text == '!주간메뉴':
         weekly_table_content = get_weekly_menu()
         if weekly_table_content:
             table_header = "| 요일 | 점심 | 저녁 |\n|:---:|:---:|:---:|\n"
             full_table = f"### 📅 이번 주 메뉴 요약\n" + table_header + weekly_table_content
-            response_payload = {"response_type": "in_channel", "text": full_table}
+            response_payload = {"response_type": "ephemeral", "text": full_table}
         else:
             response_payload = {"response_type": "ephemeral", "text": "주간 메뉴를 불러오는 데 실패했습니다."}
         return jsonify(response_payload)
@@ -175,9 +172,9 @@ def handle_command():
     if '내일' in command_text:
         day_offset = 1
         command_base = command_text.replace('내일', '').strip()
-        message_prefix = "## 📅 내일"
+        message_prefix = "### 📅 내일"
     else:
-        message_prefix = "## 🍚 오늘"
+        message_prefix = "### 🍚 오늘"
 
     if '점심' in command_base: column, meal_name = 2, "점심"
     elif '저녁' in command_base: column, meal_name = 3, "저녁"
@@ -190,13 +187,12 @@ def handle_command():
 
     image_url = get_menu_from_sheet(column_index=column, day_offset=day_offset)
     
+    # --- [수정] ✨ !점심, !저녁 등의 응답도 모두 'ephemeral' (나에게만 보기)로 변경 ---
     if image_url:
-        response_payload = {"response_type": "in_channel", "text": f"{message_prefix} {meal_name} 메뉴입니다! :kirby_shake: ", "attachments": [{"fallback": "메뉴 이미지", "image_url": image_url}]}
+        response_payload = {"response_type": "ephemeral", "text": f"{message_prefix} {meal_name} 메뉴입니다!", "attachments": [{"fallback": "메뉴 이미지", "image_url": image_url}]}
     else:
-        response_payload = {"response_type": "ephemeral", "text": f"## 아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! :kane_sorry: "}
+        response_payload = {"response_type": "ephemeral", "text": f"아직 {message_prefix} {meal_name} 메뉴가 등록되지 않았어요! 😅"}
     return jsonify(response_payload)
-
-# --- [삭제] ✨ 투표를 처리하는 /vote 엔드포인트 전체를 제거 ---
 
 
 # --- 메인 실행 블록 ---
@@ -206,8 +202,8 @@ if __name__ == "__main__":
     incoming_webhook_url = os.getenv('MATTERMOST_WEBHOOK_URL')
 
     if incoming_webhook_url:
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=9, minute=00, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
-        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=14, minute=00, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=8, minute=50, args=[incoming_webhook_url, 'lunch'], id='lunch_notification')
+        scheduler.add_job(send_scheduled_meal_message, 'cron', day_of_week='mon-fri', hour=13, minute=50, args=[incoming_webhook_url, 'dinner'], id='dinner_notification')
         logging.info("자동 식사 메뉴 알림이 설정되었습니다.")
         scheduler.start()
         atexit.register(lambda: scheduler.shutdown())
